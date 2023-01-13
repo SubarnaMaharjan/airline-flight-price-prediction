@@ -5,8 +5,7 @@ import seaborn as sns
 
 sns.set()
 
-def date_conv():
-    data = pd.read_excel(r'/home/vylericd3vil/Minor-project/Dataset/Data_Train.xlsx')
+def date_conv(data):
 
     data["Journey_day"] = pd.to_datetime(data.Date_of_Journey, format="%d/%m/%Y").dt.day
 
