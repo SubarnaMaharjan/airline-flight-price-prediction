@@ -6,7 +6,7 @@ import pandas as pd
 
 
 app = Flask(__name__)
-model = pickle.load(open("c1_flight_rf.pkl", "rb"))
+model = pickle.load(open("Model/flight_price_rf.pkl", "rb"))
 
 
 @app.route("/")
@@ -14,221 +14,100 @@ model = pickle.load(open("c1_flight_rf.pkl", "rb"))
 def home():
     return render_template("index.html")
 
-@app.route("/predict", methods = ["GET", "POST"])
+
+def get_datetime_parts(datetime_str):
+    dt = pd.to_datetime(datetime_str, format="%Y-%m-%dT%H:%M")
+    return dt.day, dt.month, dt.hour, dt.minute
+
+
+def one_hot_encode(value, categories, prefix):
+    encoded = {f"{prefix}_{cat.replace(' ', '')}": 0 for cat in categories}
+    key = f"{prefix}_{value.replace(' ', '')}"
+    if key in encoded:
+        encoded[key] = 1
+    else:
+        encoded[f"{prefix}_Other"] = 1  # Fallback for unknown category
+    return encoded
+
+
+@app.route("/predict", methods=["GET", "POST"])
 @cross_origin()
 def predict():
     if request.method == "POST":
+        # Parse departure and arrival times
+        dep_time = request.form["Dep_Time"]
+        arr_time = request.form["Arrival_Time"]
+        journey_day, journey_month, dep_hour, dep_min = get_datetime_parts(dep_time)
+        _, _, arrival_hour, arrival_min = get_datetime_parts(arr_time)
 
-        # Date_of_Journey
-        date_dep = request.form["Dep_Time"]
-        journey_day = int(pd.to_datetime(date_dep, format="%Y-%m-%dT%H:%M").day)
-        journey_month = int(pd.to_datetime(date_dep, format ="%Y-%m-%dT%H:%M").month)
-        # print("Journey Date : ",Journey_day, Journey_month)
+        # Duration calculation
+        duration_hour = abs(arrival_hour - dep_hour)
+        duration_min = abs(arrival_min - dep_min)
 
-        # Departure
-        dep_hour = int(pd.to_datetime(date_dep, format ="%Y-%m-%dT%H:%M").hour)
-        dep_min = int(pd.to_datetime(date_dep, format ="%Y-%m-%dT%H:%M").minute)
-        # print("Departure : ",Dep_hour, Dep_min)
+        # Stops
+        total_stops = int(request.form["stops"])
 
-        # Arrival
-        date_arr = request.form["Arrival_Time"]
-        arrival_hour = int(pd.to_datetime(date_arr, format ="%Y-%m-%dT%H:%M").hour)
-        arrival_min = int(pd.to_datetime(date_arr, format ="%Y-%m-%dT%H:%M").minute)
-        # print("Arrival : ", Arrival_hour, Arrival_min)
+        # One-hot encode Airline
+        airline = request.form["airline"]
+        airline_categories = [
+            "Jet Airways",
+            "IndiGo",
+            "Air India",
+            "Multiple carriers",
+            "SpiceJet",
+            "Vistara",
+            "GoAir",
+        ]
+        airline_encoded = one_hot_encode(airline, airline_categories, "Airline")
+        airline_encoded.setdefault("Airline_Other", 0)  # Ensure key exists
 
-        # Duration
-        Duration_hour = abs(arrival_hour - dep_hour)
-        Duration_mins = abs(arrival_min - dep_min)
-        # print("Duration : ", dur_hour, dur_min)
+        # One-hot encode Source
+        source = request.form["Source"]
+        source_categories = ["Delhi", "Kolkata", "Mumbai", "Chennai"]
+        source_encoded = one_hot_encode(source, source_categories, "Source")
 
-        # Total Stops
-        Total_Stops = int(request.form["stops"])
-        # print(Total_stops)
+        # One-hot encode Destination
+        destination = request.form["Destination"]
+        dest_categories = ["Cochin", "Delhi", "Hyderabad", "Kolkata"]
+        dest_encoded = one_hot_encode(destination, dest_categories, "Destination")
 
-
-
-        airline=request.form['airline']
-        if(airline=='Jet Airways'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 1
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 0
-
-        elif (airline=='IndiGo'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 1
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 0
-
-        elif (airline=='Air India'):
-            Airline_AirIndia = 1
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 0
-            
-        elif (airline=='Multiple carriers'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 1
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 0
-            
-        elif (airline=='SpiceJet'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 1
-            Airline_Vistara = 0
-            Airline_Other = 0
-            
-        elif (airline=='Vistara'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 1
-            Airline_Other = 0
-
-        elif (airline=='GoAir'):
-            Airline_AirIndia = 0
-            Airline_GoAir = 1
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 0
-
-        else:
-            Airline_AirIndia = 0
-            Airline_GoAir = 0
-            Airline_IndiGo = 0
-            Airline_JetAirways = 0
-            Airline_MultipleCarriers = 0
-            Airline_SpiceJet = 0
-            Airline_Vistara = 0
-            Airline_Other = 1
-
-
-        Source = request.form["Source"]
-        if (Source == 'Delhi'):
-            Source_Delhi = 1
-            Source_Kolkata = 0
-            Source_Mumbai = 0
-            Source_Chennai = 0
-
-        elif (Source == 'Kolkata'):
-            Source_Delhi = 0
-            Source_Kolkata = 1
-            Source_Mumbai = 0
-            Source_Chennai = 0
-
-        elif (Source == 'Mumbai'):
-            Source_Delhi = 0
-            Source_Kolkata = 0
-            Source_Mumbai = 1
-            Source_Chennai = 0
-
-        elif (Source == 'Chennai'):
-            Source_Delhi = 0
-            Source_Kolkata = 0
-            Source_Mumbai = 0
-            Source_Chennai = 1
-
-        else:
-            Source_Delhi = 0
-            Source_Kolkata = 0
-            Source_Mumbai = 0
-            Source_Chennai = 0
-
-
-
-        Source = request.form["Destination"]
-        if (Source == 'Cochin'):
-            Destination_Cochin = 1
-            Destination_Delhi = 0
-            Destination_Hyderabad = 0
-            Destination_Kolkata = 0
-        
-        elif (Source == 'Delhi'):
-            Destination_Cochin = 0
-            Destination_Delhi = 1
-            Destination_Hyderabad = 0
-            Destination_Kolkata = 0
-
-        elif (Source == 'Hyderabad'):
-            Destination_Cochin = 0
-            Destination_Delhi = 0
-            Destination_Hyderabad = 1
-            Destination_Kolkata = 0
-
-        elif (Source == 'Kolkata'):
-            Destination_Cochin = 0
-            Destination_Delhi = 0
-            Destination_Hyderabad = 0
-            Destination_Kolkata = 1
-
-        else:
-            Destination_Cochin = 0
-            Destination_Delhi = 0
-            Destination_Hyderabad = 0
-            Destination_Kolkata = 0
-
-
-        prediction=model.predict([[
-            Total_Stops,
+        # Prepare model input
+        input_features = [
+            total_stops,
             journey_day,
             journey_month,
             dep_hour,
             dep_min,
             arrival_hour,
             arrival_min,
-            Duration_hour,
-            Duration_mins,
-            Airline_AirIndia,
-            Airline_GoAir,
-            Airline_IndiGo,
-            Airline_JetAirways,
-            Airline_MultipleCarriers,
-            Airline_Other,
-            Airline_SpiceJet,
-            Airline_Vistara,
-            Source_Chennai,
-            Source_Kolkata,
-            Source_Mumbai,
-            Destination_Cochin,
-            Destination_Delhi,
-            Destination_Hyderabad,
-            Destination_Kolkata,
-        ]])
+            duration_hour,
+            duration_min,
+            airline_encoded["Airline_AirIndia"],
+            airline_encoded["Airline_GoAir"],
+            airline_encoded["Airline_IndiGo"],
+            airline_encoded["Airline_JetAirways"],
+            airline_encoded["Airline_Multiplecarriers"],
+            airline_encoded["Airline_Other"],
+            airline_encoded["Airline_SpiceJet"],
+            airline_encoded["Airline_Vistara"],
+            source_encoded["Source_Chennai"],
+            source_encoded["Source_Kolkata"],
+            source_encoded["Source_Mumbai"],
+            dest_encoded["Destination_Cochin"],
+            dest_encoded["Destination_Delhi"],
+            dest_encoded["Destination_Hyderabad"],
+            dest_encoded["Destination_Kolkata"],
+        ]
 
-        output=round(prediction[0],2)
+        # Predict
+        prediction = model.predict([input_features])
+        output = round(prediction[0], 2)
 
-        return render_template('index.html',prediction_text = f"Your Flight price is Rs. {output}")
-
+        return render_template(
+            "index.html", prediction_text=f"Your Flight price is Rs. {output}"
+        )
 
     return render_template("index.html")
-
-
 
 
 if __name__ == "__main__":
